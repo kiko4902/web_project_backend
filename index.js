@@ -1,30 +1,33 @@
 require('dotenv').config();
 const express = require('express');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const app = express();
 
-app.use(cors({
-  origin: "https://movie-frontend-alpha-six.vercel.app",
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
+// 1. CORS Configuration (MUST come first)
+const allowedOrigins = [
+  'https://movie-frontend-alpha-six.vercel.app',
+  'http://localhost:3000'
+];
 
-// 2. Explicitly handle OPTIONS for all routes
-app.options('*', cors());
-
-// 3. Then add other middleware
-app.use(helmet());
-app.use(express.json({ limit: '10kb' }));
-
-// 4. Add debug middleware
 app.use((req, res, next) => {
-  console.log(`Incoming ${req.method} request from origin:`, req.headers.origin);
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
   next();
 });
+
+// 2. Other middleware
+app.use(express.json());
+app.use(helmet());
+
 
 
 const moviesRouter = require('./routes/movies'); 
@@ -44,6 +47,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running with CORS for:`, allowedOrigins);
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running with CORS for: ${allowedOrigins.join(', ')}`);
 });
