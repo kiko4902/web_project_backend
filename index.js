@@ -2,36 +2,37 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-
 const cors = require('cors');
 const app = express();
 
-// Enhanced CORS configuration
+// 1. Apply CORS FIRST before other middleware
 const allowedOrigins = [
   'https://movie-frontend-alpha-six.vercel.app',
   'http://localhost:3000'
 ];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+app.use(cors({
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200 
-};
+  optionsSuccessStatus: 200
+}));
 
-//
-app.use(cors(corsOptions));
+// 2. Explicitly handle OPTIONS for all routes
+app.options('*', cors());
 
-app.options('*', cors(corsOptions));
-app.use(express.json({ limit: '10kb' }));
+// 3. Then add other middleware
 app.use(helmet());
+app.use(express.json({ limit: '10kb' }));
+
+// 4. Add debug middleware
+app.use((req, res, next) => {
+  console.log(`Incoming ${req.method} request from origin:`, req.headers.origin);
+  next();
+});
+
+
 const moviesRouter = require('./routes/movies'); 
 app.use('/movies', moviesRouter); 
 app.use('/reviews', require('./routes/reviews'));
@@ -50,6 +51,5 @@ app.use((err, req, res, next) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Supabase URL: ${process.env.SUPABASE_URL}`);
+  console.log(`Server running with CORS for:`, allowedOrigins);
 });
