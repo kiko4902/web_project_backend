@@ -6,15 +6,20 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 app.use(helmet());
-app.use(cors({
+const corsOptions = {
   origin: [
     'https://movie-frontend-alpha-six.vercel.app', 
-    'http://localhost:3000'                        
+    'http://localhost:3000'                       
   ],
-  credentials: true, 
-  methods: ['GET', 'POST', 'PUT', 'DELETE']      
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true 
+};
 
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions)); // Enable preflight for all routes
 app.use(express.json({ limit: '10kb' }));
 
 const moviesRouter = require('./routes/movies'); 
