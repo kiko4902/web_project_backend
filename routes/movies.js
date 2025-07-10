@@ -2,37 +2,23 @@ const router = require('express').Router();
 const supabase = require('../services/supabase');
 const { validateQuery } = require('../middlewares/validate');
 
-// Get single movie with enhanced poster URL
-router.get('/:id', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('movies')
-      .select(`
-        *,
-        movie_genres(genres(name)),
-        reviews!left(user_id, rating, comment, created_at)
-      `)
-      .eq('id', req.params.id)
-      .single();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Movie not found" });
-
-    // Enhance poster URL if from Amazon
-    const enhancedData = {
-      ...data,
-      poster_url: data.poster_url?.includes('m.media-amazon.com') 
-        ? data.poster_url.replace('_V1_UX67_CR0,0,67,98_AL_', '_V1_UX512_CR0,0,512,750_AL_')
-        : data.poster_url
-    };
-
-    res.json(enhancedData);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+const enhancePosterUrl = (url) => {
+  if (!url) return url;
+  
+  if (url.includes('m.media-amazon.com')) {
+    return url
+      .replace(/_V1_.*?\._/, '_V1_UY2000_CR0,0,1500,2000_AL_.')
+      .replace(/@\..*?\.jpg$/, '@._V1_UY2000_CR0,0,1500,2000_AL_.jpg')
+      .replace(/_V1_.*?_AL_/, '_V1_UY2000_CR0,0,1500,2000_AL_');
   }
-});
-
-// Get paginated movie list with improved thumbnails
+  
+  if (url.includes('themoviedb.org')) {
+    return url
+      .replace('/w185', '/w780')  
+      .replace('/w342', '/w780'); 
+  }
+  return url;
+};
 router.get('/', async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
@@ -45,12 +31,9 @@ router.get('/', async (req, res) => {
 
     if (error) throw error;
 
-    // Improve thumbnails for all movies
     const enhancedMovies = data.map(movie => ({
       ...movie,
-      poster_url: movie.poster_url?.includes('m.media-amazon.com')
-        ? movie.poster_url.replace('_V1_UX67_CR0,0,67,98_AL_', '_V1_UX300_CR0,0,300,450_AL_')
-        : movie.poster_url
+      poster_url: enhancePosterUrl(movie.poster_url)
     }));
 
     res.json({
@@ -66,8 +49,67 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+router.get('/search', async (req, res) => {
+  const { query, year, rating, genre } = req.query;
+  
+  try {
+    let queryBuilder = supabase
+      .from('movies')
+      .select('*');
 
-// Get reviews for a movie (unchanged)
+    if (query) {
+      queryBuilder = queryBuilder.ilike('title', `%${query}%`);
+    }
+    if (year) {
+      queryBuilder = queryBuilder.eq('release_date', `${year}.0`);
+    }
+    if (rating) {
+      const minRating = parseFloat(rating).toFixed(1);
+      queryBuilder = queryBuilder.gte('imdb_rating', minRating);
+    }
+    if (genre) {
+      queryBuilder = queryBuilder.ilike('genres', `%${genre}%`);
+    }
+
+    const { data, error } = await queryBuilder;
+
+    if (error) throw error;
+    
+    const enhancedMovies = data.map(movie => ({
+      ...movie,
+      poster_url: enhancePosterUrl(movie.poster_url)
+    }));
+
+    res.json(enhancedMovies);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get('/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('movies')
+      .select(`
+        *,
+        movie_genres(genres(name)),
+        reviews!left(user_id, rating, comment, created_at)
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Movie not found" });
+
+    const enhancedData = {
+      ...data,
+      poster_url: enhancePosterUrl(data.poster_url)
+    };
+
+    res.json(enhancedData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 router.get('/:id/reviews', async (req, res) => {
   try {
     const { data: reviews, error: reviewsError } = await supabase

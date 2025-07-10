@@ -2,6 +2,25 @@ const router = require('express').Router();
 const supabase = require('../services/supabase');
 const authenticate = require('../middlewares/auth');
 
+const enhancePosterUrl = (url) => {
+  if (!url) return url;
+  
+  if (url.includes('m.media-amazon.com')) {
+    return url
+      .replace(/_V1_.*?\._/, '_V1_UY2000_CR0,0,1500,2000_AL_.')
+      .replace(/@\..*?\.jpg$/, '@._V1_UY2000_CR0,0,1500,2000_AL_.jpg')
+      .replace(/_V1_.*?_AL_/, '_V1_UY2000_CR0,0,1500,2000_AL_');
+  }
+  
+  if (url.includes('themoviedb.org')) {
+    return url
+      .replace('/w185', '/w780') 
+      .replace('/w342', '/w780'); 
+  }
+  
+  return url;
+};
+
 router.get('/', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -14,10 +33,10 @@ router.get('/', authenticate, async (req, res) => {
 
     if (error) throw error;
     
-    // Transform data to include movie details directly
     const formattedData = data.map(item => ({
       added_at: item.added_at,
-      ...item.movies
+      ...item.movies,
+      poster_url: enhancePosterUrl(item.movies.poster_url)
     }));
     
     res.json(formattedData);
@@ -30,7 +49,6 @@ router.post('/toggle', authenticate, async (req, res) => {
   const { movie_id } = req.body;
 
   try {
-    // 1. Verify movie exists
     const { data: movie, error: movieError } = await supabase
       .from('movies')
       .select('id')
@@ -40,8 +58,6 @@ router.post('/toggle', authenticate, async (req, res) => {
     if (movieError || !movie) {
       return res.status(404).json({ error: "Movie not found" });
     }
-
-    // 2. Check current watchlist status
     const { data: existing, error: lookupError } = await supabase
       .from('user_watchlist')
       .select('*')
@@ -50,9 +66,7 @@ router.post('/toggle', authenticate, async (req, res) => {
 
     if (lookupError) throw lookupError;
 
-    // 3. Perform toggle action
     if (existing?.length > 0) {
-      // DELETE operation with proper filtering
       const { error: deleteError } = await supabase
         .from('user_watchlist')
         .delete()
@@ -64,7 +78,6 @@ router.post('/toggle', authenticate, async (req, res) => {
       if (deleteError) throw deleteError;
       return res.json({ action: "removed", success: true });
     } else {
-      // INSERT operation
       const { data, error: insertError } = await supabase
         .from('user_watchlist')
         .insert({
@@ -81,4 +94,4 @@ router.post('/toggle', authenticate, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-module.exports = router; // Must export the router
+module.exports = router;

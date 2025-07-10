@@ -1,29 +1,40 @@
 const router = require('express').Router();
 const supabase = require('../services/supabase');
-const { authenticate } = require('../middlewares/auth');
+const authenticate = require('../middlewares/auth');
 
-// Get user profile
-router.get('/profile', authenticate, async (req, res) => {
+router.get('/profile', authenticate, async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .select('*')
       .eq('user_id', req.user.id)
       .single();
 
-    if (error) throw error;
-    res.json(data || {});
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!data) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-// Update user profile
-router.post('/profile', authenticate, async (req, res) => {
+router.post('/profile', authenticate, async (req, res, next) => {
   const { username } = req.body;
+  
+  if (!username) {
+    return res.status(400).json({ error: 'Username is required' });
+  }
+
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .upsert({ 
         user_id: req.user.id, 
         username 
@@ -31,10 +42,14 @@ router.post('/profile', authenticate, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
     res.json(data);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    next(err);
   }
 });
 
