@@ -7,8 +7,8 @@ const app = express();
 
 // 1. Apply CORS FIRST before other middleware
 const allowedOrigins = [
-  'https://movie-frontend-alpha-six.vercel.app',
-  'http://localhost:3000'
+  https://movie-frontend-alpha-six.vercel.app,
+  http://localhost:3000
 ];
 
 app.use(cors({
