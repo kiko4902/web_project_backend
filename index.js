@@ -1,35 +1,28 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const app = express();
 
-const helmet = require('helmet');
-
-// 1. CORS Configuration (MUST come first)
-const allowedOrigins = [
-  'https://movie-frontend-alpha-six.vercel.app',
-  'http://localhost:3000'
-];
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-  
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-app.use(express.json());
 app.use(helmet());
+const corsOptions = {
+  origin: [
+    'https://movie-frontend-alpha-six.vercel.app', 
+    'http://localhost:3000'                       
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true 
+};
 
-onst moviesRouter = require('./routes/movies'); 
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions)); // Enable preflight for all routes
+app.use(express.json({ limit: '10kb' }));
+
+const moviesRouter = require('./routes/movies'); 
 app.use('/movies', moviesRouter); 
 app.use('/reviews', require('./routes/reviews'));
 app.use('/watchlist', require('./routes/watchlist'));
@@ -41,13 +34,12 @@ app.use('/auth', authRouter);
 const genresRouter = require('./routes/genres');
 app.use('/genres', genresRouter); 
 app.get('/health', (req, res) => res.sendStatus(200));
-
 app.use((err, req, res, next) => {
   console.error(err.stack);
-    res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error' });
 });
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Supabase URL: ${process.env.SUPABASE_URL}`);
 });
