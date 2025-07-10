@@ -5,41 +5,68 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const app = express();
 
-app.use(helmet());
+// 1. CORS Configuration - MUST come first
+const allowedOrigins = [
+  'https://movie-frontend-alpha-six.vercel.app',
+  'http://localhost:3000'
+];
+
 const corsOptions = {
-  origin: [
-    'https://movie-frontend-alpha-six.vercel.app', 
-    'http://localhost:3000'                       
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true 
+  credentials: true,
+  optionsSuccessStatus: 200
 };
 
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Handle preflight requests
-app.options('*', cors(corsOptions)); // Enable preflight for all routes
+// 2. Handle preflight requests globally
+app.options('*', cors(corsOptions));
+
+// 3. Security middleware
+app.use(helmet());
 app.use(express.json({ limit: '10kb' }));
 
-const moviesRouter = require('./routes/movies'); 
-app.use('/movies', moviesRouter); 
+// 4. Rate limiting for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use('/auth', authLimiter);
+
+// 5. Routes
+app.use('/movies', require('./routes/movies'));
 app.use('/reviews', require('./routes/reviews'));
 app.use('/watchlist', require('./routes/watchlist'));
 app.use('/search', require('./routes/search'));
-const usersRouter = require('./routes/users');
-app.use('/users', usersRouter); 
-const authRouter = require('./routes/auth');
-app.use('/auth', authRouter); 
-const genresRouter = require('./routes/genres');
-app.use('/genres', genresRouter); 
+app.use('/users', require('./routes/users'));
+app.use('/auth', require('./routes/auth')); 
+app.use('/genres', require('./routes/genres'));
+
+// 6. Health check
 app.get('/health', (req, res) => res.sendStatus(200));
+
+// 7. Error handling
 app.use((err, req, res, next) => {
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'CORS policy blocked this request' });
+  }
   console.error(err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });
+
+// 8. Server startup
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
   console.log(`Supabase URL: ${process.env.SUPABASE_URL}`);
 });
