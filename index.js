@@ -12,14 +12,19 @@ const corsOptions = {
     'http://localhost:3001'                       
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true 
+    allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With', 
+    'x-requested-with'  
+    ],
+  credentials: true, 
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
 
-// Handle preflight requests
-app.options('*', cors(corsOptions)); // Enable preflight for all routes
+app.options('*', cors(corsOptions)); 
 app.use(express.json({ limit: '10kb' }));
 
 const moviesRouter = require('./routes/movies'); 
