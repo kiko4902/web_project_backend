@@ -49,6 +49,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 router.get('/search', async (req, res) => {
   const { query, year, rating, genre } = req.query;
   
@@ -85,33 +86,20 @@ router.get('/search', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 router.get('/:id', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // Get movie data
+    const { data: movie, error: movieError } = await supabase
       .from('movies')
-      .select(`
-        *,
-        movie_genres(genres(name)),
-        reviews!left(user_id, rating, comment, created_at)
-      `)
+      .select('*')
       .eq('id', req.params.id)
       .single();
 
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Movie not found" });
+    if (movieError) throw movieError;
+    if (!movie) return res.status(404).json({ error: "Movie not found" });
 
-    const enhancedData = {
-      ...data,
-      poster_url: enhancePosterUrl(data.poster_url)
-    };
-
-    res.json(enhancedData);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-router.get('/:id/reviews', async (req, res) => {
-  try {
+    // Get reviews separately
     const { data: reviews, error: reviewsError } = await supabase
       .from('reviews')
       .select('*')
@@ -120,24 +108,95 @@ router.get('/:id/reviews', async (req, res) => {
 
     if (reviewsError) throw reviewsError;
 
-    const reviewsWithUsers = await Promise.all(
-      reviews.map(async review => {
-        const { data: user, error: userError } = await supabase
-          .from('user_profiles')
-          .select('username')
-          .eq('user_id', review.user_id)
-          .single();
+    // Process reviews to include usernames
+    const processedReviews = await Promise.all(
+      reviews.map(async (review) => {
+        try {
+          const { data: userProfile } = await supabase
+            .from('user_profiles')
+            .select('username')
+            .eq('user_id', review.user_id)
+            .single();
 
-        return {
-          ...review,
-          username: user?.username || 'deleted user'
-        };
+          return {
+            ...review,
+            username: userProfile?.username || review.username || 'Anonymous'
+          };
+        } catch (err) {
+          return {
+            ...review,
+            username: review.username || 'Anonymous'
+          };
+        }
       })
     );
 
-    res.json(reviewsWithUsers);
+    // Get genres if needed
+    const { data: genres } = await supabase
+      .from('movie_genres')
+      .select('genres(name)')
+      .eq('movie_id', req.params.id);
+
+    const enhancedData = {
+      ...movie,
+      reviews: processedReviews,
+      genres: genres?.map(g => g.genres) || [],
+      poster_url: enhancePosterUrl(movie.poster_url)
+    };
+
+    res.json(enhancedData);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching movie:', err);
+    res.status(500).json({ 
+      error: 'Failed to fetch movie',
+      details: err.message 
+    });
+  }
+});
+
+router.get('/:id/reviews', async (req, res) => {
+  try {
+    // First get all reviews for the movie
+    const { data: reviews, error: reviewsError } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('movie_id', req.params.id)
+      .order('created_at', { ascending: false });
+
+    if (reviewsError) throw reviewsError;
+
+    // Then get usernames for each review
+    const reviewsWithUsernames = await Promise.all(
+      reviews.map(async (review) => {
+        try {
+          // Try to get username from user_profiles
+          const { data: userProfile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('username')
+            .eq('user_id', review.user_id)
+            .single();
+
+          return {
+            ...review,
+            username: userProfile?.username || review.username || 'Anonymous'
+          };
+        } catch (err) {
+          // Fallback if user profile fetch fails
+          return {
+            ...review,
+            username: review.username || 'Anonymous'
+          };
+        }
+      })
+    );
+
+    res.json(reviewsWithUsernames);
+  } catch (err) {
+    console.error('Error fetching reviews:', err);
+    res.status(500).json({ 
+      error: 'Failed to fetch reviews',
+      details: err.message 
+    });
   }
 });
 
