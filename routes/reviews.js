@@ -3,7 +3,6 @@ const supabase = require('../services/supabase');
 const authenticate = require('../middlewares/auth');
 const { validateReview } = require('../middlewares/validate');
 
-// Helper function to check if column exists
 async function columnExists(tableName, columnName) {
   const { data, error } = await supabase
     .rpc('column_exists', {
@@ -27,18 +26,20 @@ router.post('/:movieId', authenticate, validateReview, async (req, res) => {
     return res.status(400).json({ error: 'Rating must be a valid number' });
   }
 
-  console.log('Received review data:', {
-    rating: numericRating,
-    type: typeof numericRating,
-    comment,
-    movieId
-  });
-
   if (isNaN(movieId)) {
     return res.status(400).json({ error: 'Invalid movie ID' });
   }
 
   try {
+    const { data: userProfile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('username')
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (profileError) throw profileError;
+    if (!userProfile) throw new Error('User profile not found');
+
     const { data: existingReview, error: existingError } = await supabase
       .from('reviews')
       .select()
@@ -50,6 +51,7 @@ router.post('/:movieId', authenticate, validateReview, async (req, res) => {
     if (existingReview) {
       return res.status(400).json({ error: 'You already reviewed this movie' });
     }
+
     const { data, error } = await supabase
       .from('reviews')
       .insert({
@@ -57,6 +59,7 @@ router.post('/:movieId', authenticate, validateReview, async (req, res) => {
         movie_id: movieId,
         rating,
         comment,
+        username: userProfile.username, 
         created_at: new Date()
       })
       .select()
