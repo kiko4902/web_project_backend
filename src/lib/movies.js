@@ -62,7 +62,7 @@ async function listMovies(db, filters) {
 }
 
 function toReview(row) {
-  const { user_profiles: profile, username: _deprecated, ...review } = row;
+  const { user_profiles: profile, ...review } = row;
   return { ...review, username: profile?.username || 'Anonymous' };
 }
 
