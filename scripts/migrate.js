@@ -76,7 +76,9 @@ async function main() {
         console.log(`applied  ${m.file}`);
       } catch (err) {
         await client.query('rollback');
-        throw new Error(`${m.file} failed and was rolled back: ${err.message}`);
+        throw new Error(`${m.file} failed and was rolled back: ${err.message}`, {
+          cause: err,
+        });
       }
     }
     console.log('database is up to date');
