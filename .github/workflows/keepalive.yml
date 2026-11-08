@@ -1,14 +1,20 @@
 name: Keep database awake
 
-# Supabase may pause free projects that see little activity for 7 days.
-# /health/db runs a real query, which counts as activity.
+# Supabase pauses free projects that see little activity for 7 days.
+# /health/db runs a real query, which counts as activity. Daily, so a single
+# missed or failed run never comes close to the limit.
+#
+# A ping cannot wake a project that is already paused: once that happens the
+# project's hostname stops resolving and /health/db answers 503 until the
+# project is restored from the Supabase dashboard. This job then fails with
+# that explanation and opens an issue, so it is not missed.
 #
 # GitHub disables scheduled workflows after 60 days without repository
 # activity and emails a warning first; re-enable it from the Actions tab.
 
 on:
   schedule:
-    - cron: '17 6 * * 1,4' # Mondays and Thursdays, 06:17 UTC
+    - cron: '17 6 * * *' # daily, 06:17 UTC
   workflow_dispatch:
 
 permissions: {}
@@ -16,10 +22,54 @@ permissions: {}
 jobs:
   ping:
     runs-on: ubuntu-latest
+    env:
+      API_URL: https://moviedb-api-two.vercel.app
     steps:
       - name: Query the database through the API
         run: |
-          curl --fail --silent --show-error --retry 3 --retry-delay 20 --max-time 30 \
-            "$API_URL/health/db"
+          # Retries cover cold starts and brief blips (including 503s).
+          : > body.txt
+          status=$(curl --silent --show-error --retry 3 --retry-delay 20 --max-time 30 \
+            --output body.txt --write-out '%{http_code}' "$API_URL/health/db") || status=000
+          body=$(head -c 500 body.txt 2>/dev/null)
+
+          case "$status" in
+            200)
+              echo "Database is up: $body"
+              exit 0
+              ;;
+            000)
+              echo "::error title=API unreachable::Could not connect to $API_URL. Check the Vercel deployment and that the URL in this workflow is still right."
+              ;;
+            503)
+              echo "::error title=Database unreachable::The API is up but cannot reach Supabase. The free project has most likely been paused for inactivity. Restore it at https://supabase.com/dashboard (pings cannot wake a paused project), then re-run this workflow."
+              ;;
+            *)
+              echo "::error title=Unexpected response::$API_URL/health/db answered HTTP $status: $body"
+              ;;
+          esac
+          echo "Response (HTTP $status): $body"
+          exit 1
+
+  report:
+    needs: ping
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update an issue
         env:
-          API_URL: https://moviedb-api-two.vercel.app
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Keep-alive failing: database may be paused'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --body "The scheduled database ping failed: $RUN_URL
+
+          The run's error annotation says which part is down. If the database is paused, restore the project from the Supabase dashboard, re-run the workflow, then close this issue."
+          fi
