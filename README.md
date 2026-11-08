@@ -112,14 +112,14 @@ A session is `{ access_token, refresh_token, expires_at }`. Errors are `{ "error
 
 ### Rate limits
 
-| Scope                 | Limit                             |
-| --------------------- | --------------------------------- |
-| All routes, per IP    | 600 requests per 15 minutes       |
-| Login, per IP + email | 10 failed attempts per 15 minutes |
-| Login, per IP         | 50 failed attempts per 15 minutes |
-| Registration, per IP  | 10 per hour                       |
+| Scope                 | Limit                                                |
+| --------------------- | ---------------------------------------------------- |
+| All routes, per IP    | 600 requests per 15 minutes, per serverless instance |
+| Login, per IP + email | 10 failed attempts per 15 minutes                    |
+| Login, per IP         | 50 failed attempts per 15 minutes                    |
+| Registration, per IP  | 10 per hour                                          |
 
-Login and registration counters are stored in Postgres, so they hold across serverless instances. Over the limit, the API returns 429.
+Login and registration counters are stored in Postgres, so they hold across serverless instances. The all-routes limit is kept in memory: it is a cheap guard against runaway clients, and since each instance counts separately, the real ceiling can be higher when traffic is spread across instances. Over a limit, the API returns 429.
 
 ## Local setup
 
@@ -139,16 +139,16 @@ On an empty database, `db:migrate` applies everything in `supabase/migrations/` 
 
 ### Environment variables
 
-| Variable                        | Required | Description                                                                                    |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `SUPABASE_URL`                  | yes      | Project URL                                                                                    |
-| `SUPABASE_PUBLISHABLE_KEY`      | yes      | Publishable key, used with the caller's token so row level security applies                    |
-| `SUPABASE_SECRET_KEY`           | yes      | Secret key, server only. Used for rate-limit counters and `demo:create`.                       |
-| `CORS_ORIGINS`                  | yes      | Comma-separated browser origins allowed to call the API. `*` matches one hostname segment.     |
-| `SUPABASE_DB_URL`               | scripts  | Postgres connection string. Only the `db:*` scripts use it; the deployed API does not need it. |
-| `PORT`                          | no       | Local port, default 3000                                                                       |
-| `DEMO_EMAIL`, `DEMO_PASSWORD`   | no       | Account behind `POST /auth/demo`                                                               |
-| `SMOKE_EMAIL`, `SMOKE_PASSWORD` | no       | Account used by `npm run smoke`                                                                |
+| Variable                        | Required | Description                                                                                                                                                                                                                 |
+| ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_URL`                  | yes      | Project URL                                                                                                                                                                                                                 |
+| `SUPABASE_PUBLISHABLE_KEY`      | yes      | Publishable key, used with the caller's token so row level security applies                                                                                                                                                 |
+| `SUPABASE_SECRET_KEY`           | for prod | Secret key, server only. Used for rate-limit counters and `demo:create`. Without it the API still starts, but login and registration limits fall back to in-memory counters, which do not hold across serverless instances. |
+| `CORS_ORIGINS`                  | for prod | Comma-separated browser origins allowed to call the API. `*` matches one hostname segment. Defaults to `http://localhost:5173`, so a deployment must set it.                                                                |
+| `SUPABASE_DB_URL`               | scripts  | Postgres connection string. Only the `db:*` scripts use it; the deployed API does not need it.                                                                                                                              |
+| `PORT`                          | no       | Local port, default 3000                                                                                                                                                                                                    |
+| `DEMO_EMAIL`, `DEMO_PASSWORD`   | no       | Account behind `POST /auth/demo`                                                                                                                                                                                            |
+| `SMOKE_EMAIL`, `SMOKE_PASSWORD` | no       | Account used by `npm run smoke`                                                                                                                                                                                             |
 
 `.env` is gitignored. Never commit it.
 
@@ -171,7 +171,7 @@ On an empty database, `db:migrate` applies everything in `supabase/migrations/` 
 
 - **`npm test`** runs 111 tests across 7 files with Vitest and supertest. The app is built by `createApp({ config, supabase })`, so the tests inject a fake Supabase client and need no network or database.
 - **`npm run smoke -- <base URL>`** runs 39 checks against a real deployment: health, listing, search, registration, login, refresh, demo login, the review and watchlist lifecycles, ownership (403 for another user's review), the login rate limit, and direct Supabase writes with the publishable key being rejected by row level security.
-- CI runs lint, the format check, the tests and a boot check on every push and pull request.
+- CI runs a dependency audit (failing on high-severity advisories in production dependencies), lint, the format check, the tests and a boot check on every push and pull request. CodeQL scans the code on every push, pull request and weekly, and Dependabot opens weekly update pull requests.
 
 ## Database migrations
 
