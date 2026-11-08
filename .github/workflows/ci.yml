@@ -23,6 +23,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Fails on high or critical advisories in what ships; dev tools are not deployed.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run format:check
       # Tests run against fakes, so no Supabase credentials are needed here.
