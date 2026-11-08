@@ -1,0 +1,24 @@
+version: 2
+
+# Weekly, with all minor and patch bumps in one PR per ecosystem.
+# Major versions still get a PR each, since they can break things.
+# Security updates are separate and not held back by this schedule.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
